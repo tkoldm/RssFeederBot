@@ -1,5 +1,4 @@
 ﻿using Domain.Services.Abstractions;
-using Infrastructure.MessageBroker;
 using Telegram.Bot;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
@@ -8,15 +7,15 @@ namespace Infrastructure.Bot;
 
 public class Bot
 {
-    private readonly ITelegramBotClient _bot ;
-
-    private readonly Broker _broker = new Broker();
+    private readonly ITelegramBotClient _bot;
+    private readonly IUserStore _userStore;
 
     private const string CommandStart = "/start";
-    private const string CommandAdd = "/add";
+    private const string CommandAdd = "/add ";
 
-    public Bot(string apiKey)
+    public Bot(string apiKey, IUserStore userStore)
     {
+        _userStore = userStore;
         _bot = new TelegramBotClient(apiKey);
     }
     public void StartReceiving(
@@ -51,10 +50,33 @@ public class Bot
             
             if (message.Text.ToLower().StartsWith(CommandAdd))
             {
+                var link = message.Text.Split(CommandAdd)[1];
+                var id = message.Chat.Id;
+                if (await _userStore.IsDataExist(id))
+                {
+                    await _userStore.AddUserLink(id, link);
+                }
+                else
+                {
+                    await _userStore.AddUser(id, new List<string>() { link });
+                }
                 await botClient.SendTextMessageAsync(message.Chat, "Добро пожаловать на борт, добрый путник!",
                     cancellationToken: cancellationToken);
             }
             
+        }
+    }
+
+    public async Task<bool> SendMessage(string message, Chat chat)
+    {
+        try
+        {
+            await _bot.SendTextMessageAsync(chat, message);
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
         }
     }
 

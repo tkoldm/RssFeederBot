@@ -2,52 +2,35 @@
 using Domain.Extensions;
 using Domain.Models;
 using Domain.Services.Abstractions;
-using Infrastructure.MessageBroker;
 
 namespace Infrastructure.RssParser;
 
 public class RssParser : IParser
 {
-    private readonly string[] _rssLinks;
-    private readonly Broker _broker;
-
-    public RssParser(string[] rssLinks, Broker broker)
+    public async Task<IEnumerable<ParsedModel>> ParseAsync(IEnumerable<string> urls, long chatId, CancellationToken cancellationToken = default)
     {
-        _rssLinks = rssLinks;
-        _broker = broker;
-    }
-
-    public async Task ParseAsync(CancellationToken cancellationToken = default)
-    {
-        while (true)
+        var models = new List<ParsedModel>();
+        foreach (var rssLink in urls)
         {
-            foreach (var rssLink in _rssLinks)
+            var client = new HttpClient();
+            var responseMessage = await client.GetAsync(rssLink, cancellationToken);
+            var content = await responseMessage.Content.ReadAsStringAsync(cancellationToken);
+            var currentLinkFeeds = ParseRssFeed(content, chatId);
+            if (currentLinkFeeds != null && currentLinkFeeds.Any())
             {
-                var client = new HttpClient();
-                var responseMessage = await client.GetAsync(rssLink);
-                var content = await responseMessage.Content.ReadAsStringAsync();
-                var currentLinkFeeds = ParseRssFeed(content);
-                if (currentLinkFeeds != null && currentLinkFeeds.Any())
-                {
-                    _broker.Produce(currentLinkFeeds);
-                }
-
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    break;
-                }
+                models.AddRange(currentLinkFeeds);
             }
 
             if (cancellationToken.IsCancellationRequested)
             {
                 break;
             }
-
-            Thread.Sleep(TimeSpan.FromSeconds(600));
         }
+
+        return models;
     }
 
-    private ParsedModel[]? ParseRssFeed(string xml)
+    private ParsedModel[]? ParseRssFeed(string xml, long chatId)
     {
         var rssXml = new XmlDocument();
         rssXml.LoadXml(xml);
@@ -76,7 +59,7 @@ public class RssParser : IParser
                 ? rssSubNode.InnerText.TrimHtmlTags().TrimString()
                 : "";
 
-            feeds.Add(new ParsedModel(title, description, link));
+            feeds.Add(new ParsedModel(title, description, link, chatId));
         }
 
         return feeds.ToArray();

@@ -3,37 +3,44 @@
 public class ParsedModel
 {
     /// <summary>
-    /// Идентификатор новости
+    /// Article's identifier
     /// </summary>
     public Guid Identifier { get; }
+    
+    /// <summary>
+    /// Identifier of chat
+    /// </summary>
+    public long ChatId { get; private set; }
 
     /// <summary>
-    /// Заголовок статьи
+    /// Article's title
     /// </summary>
     public string Title { get; }
 
     /// <summary>
-    /// Короткое описание
+    /// Article's description
     /// </summary>
     public string Description { get; }
 
     /// <summary>
-    /// Ссылка на источник
+    /// Url to original resource
     /// </summary>
     public string OriginalLink { get; }
 
     /// <summary>
-    /// Данные полученные из внешнего ресурса
+    /// Data of article from external resource
     /// </summary>
-    /// <param name="title">Заголовок</param>
-    /// <param name="description">Описание</param>
-    /// <param name="originalLink">Ссылка на оригинальную статью</param>
-    public ParsedModel(string title, string description, string originalLink)
+    /// <param name="title">Title of article</param>
+    /// <param name="description">Description</param>
+    /// <param name="originalLink">Url to original resource</param>
+    /// <param name="chatId">Identifier of chat with user</param>
+    public ParsedModel(string title, string description, string originalLink, long chatId)
     {
         Identifier = Guid.NewGuid();
         Title = title;
         Description = description;
         OriginalLink = originalLink;
+        ChatId = chatId;
     }
 
     public override string ToString()

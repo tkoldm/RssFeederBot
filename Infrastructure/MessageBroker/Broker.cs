@@ -1,55 +1,97 @@
 ﻿using Domain.Models;
+using Domain.Services.Abstractions;
+using Telegram.Bot.Types;
 
 namespace Infrastructure.MessageBroker;
 
-public class Broker
+public class Broker : IDisposable
 {
-    private List<ParsedModel> _queuedModels = new ();
+    private readonly List<ParsedModel> _queuedModels = new();
+    private readonly IUserStore _users;
+    private readonly Bot.Bot _bot;
+    private readonly IParser _rssParser;
+    private readonly Thread _parserWorker;
+    private readonly Thread _botWorker;
+    private readonly object _locker = new();
+    private readonly Semaphore _semaphoreBot = new(1, 1);
+    private readonly Semaphore _semaphoreParser = new(1, 1);
+
+    public Broker(Bot.Bot bot, IParser parser, IUserStore users)
+    {
+        _bot = bot;
+        _rssParser = parser;
+        _users = users;
+        _botWorker = new Thread(Consume);
+        _botWorker.Start();
+        _parserWorker = new Thread(Produce);
+        _parserWorker.Start();
+    }
 
     /// <summary>
-    /// Добавить одиночное сообщение в очередь
+    /// Add message to queue from parser
     /// </summary>
-    /// <param name="model"></param>
-    public void Produce(ParsedModel model)
+    private async void Produce()
     {
-        _queuedModels.Add(model);
-    }
-    
-    /// <summary>
-    /// Добавить несколько сообщений в очередь
-    /// </summary>
-    /// <param name="models"></param>
-    internal void Produce(IEnumerable<ParsedModel> models)
-    {
-        _queuedModels.AddRange(models);
+        while (true)
+        {
+            if (!await _users.Any())
+            {
+                Thread.Sleep(600);
+                continue;
+            }
+
+            var ids = await _users.GetChatIds();
+            foreach (var user in ids)
+            {
+                _semaphoreParser.WaitOne();
+                var rssUrls = await _users.GetLinksByChatId(user);
+                var models = await _rssParser.ParseAsync(rssUrls, user);
+                _queuedModels.AddRange(models);
+                _semaphoreParser.Release();
+            }
+            Thread.Sleep(TimeSpan.FromSeconds(400));
+        }
     }
 
     /// <summary>
-    /// Проверка есть ли сообщения в очереди
+    /// Process message from queue
     /// </summary>
     /// <returns></returns>
-    internal bool IsMessages()
+    private async void Consume()
     {
-        return _queuedModels.Count > 0;
+        while (true)
+        {
+            ParsedModel? message;
+            lock (_locker)
+            {
+                message = _queuedModels.FirstOrDefault();
+            }
+
+            if (message == null)
+            {
+                Thread.Sleep(TimeSpan.FromSeconds(600));
+                continue;
+            }
+
+            _semaphoreBot.WaitOne();
+            await _bot.SendMessage(message.ToString(), new Chat { Id = message.ChatId });
+            _queuedModels.Remove(message);
+            _semaphoreBot.Release();
+            Thread.Sleep(TimeSpan.FromSeconds(600));
+        }
     }
 
-    /// <summary>
-    /// Получить сообщение из очереди
-    /// </summary>
-    /// <returns></returns>
-    internal ParsedModel Consume()
+    public void Dispose()
     {
-        return _queuedModels.First();
-    }
-
-    /// <summary>
-    /// Удалить сообщение из очереди
-    /// </summary>
-    /// <param name="model"></param>
-    /// <returns></returns>
-    internal bool ConfirmConsume(ParsedModel model)
-    {
-        var isRemoved = _queuedModels.Remove(model);
-        return isRemoved;
+        try
+        {
+            _parserWorker.Interrupt();
+            _botWorker.Interrupt();
+        }
+        finally
+        {
+            _semaphoreBot.Close();
+            _semaphoreParser.Close();
+        }
     }
 }

@@ -2,5 +2,5 @@
 
 public class AppSettings
 {
-    public string TelegramToken { get; }
+    public string TelegramToken { get; private set; }
 }

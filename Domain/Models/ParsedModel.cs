@@ -10,7 +10,7 @@ public class ParsedModel
     /// <summary>
     /// Identifier of chat
     /// </summary>
-    public long ChatId { get; private set; }
+    public long[] ChatIds { get; }
 
     /// <summary>
     /// Article's title
@@ -34,13 +34,13 @@ public class ParsedModel
     /// <param name="description">Description</param>
     /// <param name="originalLink">Url to original resource</param>
     /// <param name="chatId">Identifier of chat with user</param>
-    public ParsedModel(string title, string description, string originalLink, long chatId)
+    public ParsedModel(string title, string description, string originalLink, long[] chatId)
     {
         Identifier = Guid.NewGuid();
         Title = title;
         Description = description;
         OriginalLink = originalLink;
-        ChatId = chatId;
+        ChatIds = chatId;
     }
 
     public override string ToString()
